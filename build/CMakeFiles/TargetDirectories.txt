@@ -1,0 +1,3 @@
+/home/vad/Mandelbrot-OpenGL/build/CMakeFiles/OpenGLHello.dir
+/home/vad/Mandelbrot-OpenGL/build/CMakeFiles/edit_cache.dir
+/home/vad/Mandelbrot-OpenGL/build/CMakeFiles/rebuild_cache.dir
