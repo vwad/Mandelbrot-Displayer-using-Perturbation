@@ -20,7 +20,7 @@ struct MandStep {
 
 int width = 500;
 int height = 500;
-int max_iter = 6400000;
+int max_iter = 10000;
 int iter_round_size = 50;
 int orbit_iter = max_iter;
 int current_iteration = iter_round_size;
