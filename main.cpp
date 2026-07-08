@@ -333,7 +333,6 @@ int main(int argc, char** argv) {
 
         current_iteration += iter_round_size;
         current_iteration = std::fmin(current_iteration, max_iter);
-        printf("%d\n",current_iteration);
     }
 
     glDeleteVertexArrays(1, &VAO);
