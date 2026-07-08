@@ -131,14 +131,14 @@ void zoom(double mouseX, double mouseY, double zoomFactor) {
     mpf_class Px = exact_remap(mouseX, 0, width, c_x-w, c_x+w);
     mpf_class z = zoomFactor;
     mpf_class Py = exact_remap(mouseY, 0, height,c_y+w*aspect_ratio,c_y-w*aspect_ratio);
-    std::cout << std::setprecision(40) << "x: " << Px << ", y:" << Py << std::endl;
     c_x = Px + (c_x - Px) * z;
     c_y = Py + (c_y - Py) * z;
 
     w = w * z;
 
-   reset_ssbo();
-    reset_orbit_ssbo();
+    // std::cout << std::setprecision(4) << "width: " << w << std::endl;
+    reset_ssbo();
+    reset_orbit_ssbo(); 
 }
 void zoom_at_pos(mpf_class x, mpf_class y, double zoomFactor) {
     mpf_class z = zoomFactor;
@@ -146,7 +146,6 @@ void zoom_at_pos(mpf_class x, mpf_class y, double zoomFactor) {
     c_y = y + (c_y - y) * z;
 
     w = w * z;
-
     reset_ssbo();
     reset_orbit_ssbo();
 }
@@ -179,7 +178,6 @@ void mouse_cursor_callback( GLFWwindow * window,  int button, int action, int mo
 {
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
-    mouseY = height - mouseY;
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if(GLFW_PRESS == action) {
             zoom(mouseX,mouseY,0.5f);
