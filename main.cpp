@@ -20,8 +20,8 @@ struct MandStep {
 
 int width = 500;
 int height = 500;
-int max_iter = 50000;
-int iter_round_size = 500;
+int max_iter = 6400000;
+int iter_round_size = 50;
 int orbit_iter = max_iter;
 int current_iteration = iter_round_size;
 int curr_orbit_iter = 0;
@@ -89,6 +89,17 @@ mpf_class exact_remap(mpf_class x, mpf_class a0, mpf_class a1, mpf_class b0, mpf
     return res;
 }
 
+void reset_orbit_ssbo() {
+    curr_orbit_iter = 0;
+    orbit_iter = max_iter;
+    orbit.clear();
+    z = ComplexBigNum(0,0);
+    reference_orbit(orbit,orbit_iter,curr_orbit_iter);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, orbit.size() * sizeof(glm::dvec2), orbit.data(), GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+}
+
 void reset_ssbo() {
     int size = width * height;
     mpf_class aspect_ratio = (double)(height)/width;
@@ -109,16 +120,9 @@ void reset_ssbo() {
             batch[i].delta_y = y_val.get_d();
         }
     }
-    curr_orbit_iter = 0;
     current_iteration = iter_round_size;
-    orbit_iter = max_iter;
-    orbit.clear();
-    z = ComplexBigNum(0,0);
-    reference_orbit(orbit,orbit_iter,curr_orbit_iter);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[0]);
     glBufferData(GL_SHADER_STORAGE_BUFFER, size * sizeof(MandStep), batch.data(), GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[1]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, orbit.size() * sizeof(glm::dvec2), orbit.data(), GL_DYNAMIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
@@ -126,14 +130,15 @@ void zoom(double mouseX, double mouseY, double zoomFactor) {
     mpf_class aspect_ratio = (double)(height)/width;
     mpf_class Px = exact_remap(mouseX, 0, width, c_x-w, c_x+w);
     mpf_class z = zoomFactor;
-    mpf_class Py = exact_remap(mouseY, 0, height,c_y-w*aspect_ratio,c_y+w*aspect_ratio);
+    mpf_class Py = exact_remap(mouseY, 0, height,c_y+w*aspect_ratio,c_y-w*aspect_ratio);
     std::cout << std::setprecision(40) << "x: " << Px << ", y:" << Py << std::endl;
     c_x = Px + (c_x - Px) * z;
     c_y = Py + (c_y - Py) * z;
 
     w = w * z;
 
-    reset_ssbo();
+   reset_ssbo();
+    reset_orbit_ssbo();
 }
 void zoom_at_pos(mpf_class x, mpf_class y, double zoomFactor) {
     mpf_class z = zoomFactor;
@@ -143,6 +148,7 @@ void zoom_at_pos(mpf_class x, mpf_class y, double zoomFactor) {
     w = w * z;
 
     reset_ssbo();
+    reset_orbit_ssbo();
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -152,9 +158,11 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     } else if (key == GLFW_KEY_EQUAL && action == GLFW_PRESS) {
         max_iter *= 2;
         reset_ssbo();
+        reset_orbit_ssbo();
     } else if (key == GLFW_KEY_MINUS && action == GLFW_PRESS) {
         max_iter /= 2;
         reset_ssbo();
+        reset_orbit_ssbo();
     }
 }
 
@@ -274,7 +282,7 @@ int main(int argc, char** argv) {
     std::vector<MandStep> batch(size);
     std::vector<glm::vec4> gradientColors(hist_size);
     generate_histogram_gradients(gradientColors);
-    
+    reset_orbit_ssbo();
     glGenBuffers(3, ssbo);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo[0]);
     glBufferData(GL_SHADER_STORAGE_BUFFER, size * sizeof(MandStep), batch.data(), GL_DYNAMIC_DRAW);
@@ -290,6 +298,7 @@ int main(int argc, char** argv) {
 
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(MessageCallback, 0);
+    
     while (!glfwWindowShouldClose(window))
     {
         int new_width;
@@ -324,6 +333,7 @@ int main(int argc, char** argv) {
 
         current_iteration += iter_round_size;
         current_iteration = std::fmin(current_iteration, max_iter);
+        printf("%d\n",current_iteration);
     }
 
     glDeleteVertexArrays(1, &VAO);

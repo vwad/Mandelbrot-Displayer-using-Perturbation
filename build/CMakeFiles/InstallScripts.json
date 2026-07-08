@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/vad/Mandelbrot-OpenGL/build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
