@@ -78,6 +78,7 @@ void perturbation(MandStep step, int id) {
             if (norm >= 4.0LF) { 
                 break;
             }
+            // With series approximation this will break
             if (norm < (dz_x * dz_x) + (dz_y * dz_y)) {
                 dz_x = z_x;
                 dz_y = z_y;
