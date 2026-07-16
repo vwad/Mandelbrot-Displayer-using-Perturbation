@@ -1,12 +1,21 @@
 #include <cmath>
+#include <filesystem>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "shaderProgram.h"
 #include <glm/glm.hpp>
 #include "gmpxx.h"
 #include <vector>
+#include <sstream>
 #include <iomanip>
 #include "cmpl/complexBigNum.hpp"
+#include <iostream>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+#define IMAGE_PATH "img/"
+#define NORMAL_IMAGE "s_"
+#define HIGH_RES_IMAGE "hs_"
 
 struct MandStep {
     double dz_x;
@@ -20,13 +29,19 @@ struct MandStep {
 
 int width = 500;
 int height = 500;
+
+int s_width = 8000;
+int s_height = 8000;
+
+bool high_res_mode = false;
+
 int max_iter = 10000;
 int iter_round_size = 50;
 int orbit_iter = max_iter;
 int current_iteration = iter_round_size;
 int curr_orbit_iter = 0;
-int hist_size = 2048;
-int gradient_scale = 512;
+int hist_size = 1024;
+int gradient_scale = 256;
 
 mpf_class c_x = 0.0;
 mpf_class c_y = 0.0;
@@ -35,6 +50,39 @@ mpf_class w = 2.0;
 std::vector<glm::dvec2> orbit;
 ComplexBigNum z (0,0);
 GLuint ssbo[3];
+
+std::string mpf_to_string(const mpf_class& value) {
+    mp_bitcnt_t prec_bits = value.get_prec();
+    
+    int decimal_digits = std::ceil(prec_bits * 0.3010299956639812);
+    
+    std::stringstream ss;
+    ss << std::setprecision(decimal_digits) << value;
+    
+    return ss.str();
+}
+
+std::string get_pos_string() {
+    return mpf_to_string(c_x) + "_" + mpf_to_string(c_y) + "_" + mpf_to_string(w);
+}
+
+void check_folder() {
+    if (!std::filesystem::exists(IMAGE_PATH)) {
+        std::filesystem::create_directories(IMAGE_PATH);
+    }
+}
+
+void save_screenshot(int width, int height) {
+    std::vector<unsigned char> pixels(width * height * 4);
+
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    stbi_flip_vertically_on_write(true);
+    std::string res = IMAGE_PATH;
+    res += NORMAL_IMAGE + get_pos_string() + ".png";
+    check_folder();
+    stbi_write_png(res.c_str(), width, height, 4, pixels.data(), width * 4);
+}
 
 void reference_orbit(std::vector<glm::dvec2> &orbit, int &max_iter, int &iter) {
     ComplexBigNum center (c_x,c_y);
@@ -156,12 +204,22 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_EQUAL && action == GLFW_PRESS) {
         max_iter *= 2;
-        reset_ssbo();
+        // reset_ssbo();
         reset_orbit_ssbo();
     } else if (key == GLFW_KEY_MINUS && action == GLFW_PRESS) {
         max_iter /= 2;
         reset_ssbo();
         reset_orbit_ssbo();
+    } else if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+        w = 2;
+        c_x = 0;
+        c_y = 0;
+        reset_ssbo();
+        reset_orbit_ssbo();
+    } else if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+        save_screenshot(width,height);
+    } else if (key == GLFW_KEY_H && action == GLFW_PRESS) { 
+        high_res_mode = true;
     }
 }
 
@@ -188,6 +246,7 @@ void mouse_cursor_callback( GLFWwindow * window,  int button, int action, int mo
         }
     }
 }
+
 
 void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id, 
                                 GLenum severity, GLsizei length, 
@@ -220,7 +279,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_CONTEXT_ROBUSTNESS, GLFW_LOSE_CONTEXT_ON_RESET);
-    GLFWwindow* window = glfwCreateWindow(width, height, "OpenGL Triangle", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(width, height, "Mandelbort", glfwGetPrimaryMonitor(), NULL);
     if (!window)
     {
         glfwTerminate();
@@ -233,6 +292,10 @@ int main(int argc, char** argv) {
     
 
     gladLoadGL();
+
+    GLint max_ssbo_size = 0;
+    glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &max_ssbo_size);
+    std::cout << "Max SSBO Size: " << (max_ssbo_size / 1024 / 1024) << " MB\n";
 
     const unsigned char* renderer = glGetString(GL_RENDERER);
     std::cout << "Currently using GPU: " << renderer << "\n";
@@ -296,39 +359,79 @@ int main(int argc, char** argv) {
 
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(MessageCallback, 0);
-    
+
+    GLuint fbo;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    GLuint textureColorbuffer;
+    glGenTextures(1, &textureColorbuffer);
+    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, s_width, s_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+
+    // Unbind FBO to return to default rendering
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    bool is_capturing_high_res = false;
     while (!glfwWindowShouldClose(window))
     {
         int new_width;
         int new_height;
         glfwGetFramebufferSize(window, &new_width, &new_height);
 
-        if (new_width != width || new_height != height) {
+        if (!is_capturing_high_res && (new_width != width || new_height != height)) {
             width = new_width;
             height = new_height;
-            glViewport(0, 0, width, height);
-
+            glViewport(0, 0, new_width, new_height);
             reset_ssbo();
         }
-        
+
+        if (high_res_mode && !is_capturing_high_res) {
+            is_capturing_high_res = true;
+            high_res_mode = false;
+            width = s_height;
+            height = s_height;
+            reset_ssbo();
+        }
+
+        if (is_capturing_high_res) {
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glViewport(0,0,width,height);
+            if (current_iteration >= max_iter) {
+                std::vector<unsigned char> pixels(s_width * s_height * 4);
+                glReadPixels(0, 0, s_width, s_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                stbi_flip_vertically_on_write(true);
+                std::string res = IMAGE_PATH;
+                res += HIGH_RES_IMAGE + get_pos_string() + ".png";
+                check_folder();
+                stbi_write_png(res.c_str(), s_width, s_height, 4, pixels.data(), s_width * 4);
+                is_capturing_high_res = false;
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                width = new_width;
+                height = new_height;
+                glViewport(0, 0, width, height);
+                reset_ssbo();
+            }
+        }
         glClear(GL_COLOR_BUFFER_BIT);
         prog.Activate();
         glUniform1i(loc_w, width);
         glUniform1i(loc_h, height);
         glUniform1i(loc_iter, current_iteration);
-
         glUniform1i(loc_grad, gradient_scale);
         glUniform1i(loc_hist, hist_size);
-
-        glUniform2f(loc_cen, (float)c_x.get_d(),(float)c_y.get_d());
-
+        glUniform2d(loc_cen, c_x.get_d(),c_y.get_d());
+        
         glBindVertexArray(VAO);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
-
         current_iteration += iter_round_size;
         current_iteration = std::fmin(current_iteration, max_iter);
     }

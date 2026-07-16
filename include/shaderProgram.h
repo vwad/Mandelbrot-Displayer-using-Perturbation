@@ -13,6 +13,7 @@ class ShaderProgram {
     public:
         GLuint program;
         ShaderProgram(const char* vertexFile, const char* fragmentFile);
+        ShaderProgram();
         void Activate();
         void Delete();
 

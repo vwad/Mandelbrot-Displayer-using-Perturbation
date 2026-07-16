@@ -43,9 +43,13 @@ void color(float x, float y, int iter) {
     
     float n = log(lg / LOG_2) / LOG_2;
 
-    int c_i = int(sqrt(float(iter) + 10.0 - n) * float(gradient_scale)) % histogram_size;
+    float i = sqrt(float(iter) + 10.0 - n) * float(gradient_scale);
+
+    int id1 = int(i) % histogram_size;
+    int id2 = (id1+1)%histogram_size;
+    float b = fract(i);
     
-    fragmentColor = colors[c_i];
+    fragmentColor = mix(colors[id1],colors[id2],b);
 }
 
 vec3 hsv2rgb(vec3 c) {
@@ -74,7 +78,7 @@ void perturbation(MandStep step, int id) {
     if (step.is_finished == 0) {
         while (cd < iter_round_size) {
             double norm = (z_x * z_x) + (z_y * z_y);
-            
+             
             if (norm >= 4.0LF) { 
                 break;
             }
@@ -84,7 +88,6 @@ void perturbation(MandStep step, int id) {
                 dz_y = z_y;
                 c = 0;
             }
-
             double old_dz_x = dz_x;
             double old_dz_y = dz_y;
             dz_x = old_dz_x * orbit[c].x - old_dz_y * orbit[c].y;
@@ -99,7 +102,7 @@ void perturbation(MandStep step, int id) {
             dz_y = dz_y + delta_y;
 
             c++;
-
+            
             z_x = orbit[c].x + dz_x;
             z_y = orbit[c].y + dz_y;
             cd++;
