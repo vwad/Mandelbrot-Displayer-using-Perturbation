@@ -42,6 +42,10 @@ There are certain binds that help with controlling the program.
 
 There is zooming both on click and scrolling. And pressing `-` and `=`, `halves` and `doubles` the amount of iterations respectively.
 
+Pressing `s` exports image to the [folder](./img), and pressing `h` exports 8k resolution image of the current position. Due to the way progressive iteration is built you might need high VRAM and RAM amount if you want higher resolution, because SSBO at 16k resolution would result in more than 30GB, while 8K is around 3GB.
+
+Pressing `r` changes t he width and position to the top of the set.
+
 Base amount of iterations is 10 000, and is reached by 500 iterations each update on the current frame.
 
 # Technical notes
