@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 #include "shaderProgram.h"
 #include <glm/glm.hpp>
-#include "gmpxx.h"
+#include <gmpxx.h>
 #include <vector>
 #include <sstream>
 #include <iomanip>
@@ -16,6 +16,8 @@
 #define IMAGE_PATH "img/"
 #define NORMAL_IMAGE "s_"
 #define HIGH_RES_IMAGE "hs_"
+
+using namespace mpfr;
 
 struct MandStep {
     double dz_x;
@@ -35,23 +37,28 @@ int s_height = 8000;
 
 bool high_res_mode = false;
 
-int max_iter = 10000;
+int max_iter = 1000;
 int iter_round_size = 50;
 int orbit_iter = max_iter;
+int max_ref_iter = 0;
 int current_iteration = iter_round_size;
 int curr_orbit_iter = 0;
 int hist_size = 1024;
 int gradient_scale = 256;
 
-mpf_class c_x = 0.0;
-mpf_class c_y = 0.0;
-mpf_class w = 2.0;
+double mpower = 2;
+
+bool holding_shift = false;
+
+mpreal c_x = 0.0;
+mpreal c_y = 0.0;
+mpreal w = 2.0;
 
 std::vector<glm::dvec2> orbit;
 ComplexBigNum z (0,0);
 GLuint ssbo[3];
 
-std::string mpf_to_string(const mpf_class& value) {
+std::string mpf_to_string(const mpreal& value) {
     mp_bitcnt_t prec_bits = value.get_prec();
     
     int decimal_digits = std::ceil(prec_bits * 0.3010299956639812);
@@ -84,14 +91,35 @@ void save_screenshot(int width, int height) {
     stbi_write_png(res.c_str(), width, height, 4, pixels.data(), width * 4);
 }
 
+ComplexBigNum complex_power(const ComplexBigNum& num, double power_double) {
+    mpreal p = power_double;
+
+    mpreal r = num.re * num.re + num.im * num.im;
+
+    mpreal theta = atan(num.im/num.re);
+
+    mpreal rp = pow(r, p/2.0);
+
+    mpreal a = p * theta;
+    mpreal c = cos(a);
+    mpreal s = sin(a);
+
+    return ComplexBigNum{ rp * c, rp * s };
+}
+
 void reference_orbit(std::vector<glm::dvec2> &orbit, int &max_iter, int &iter) {
     ComplexBigNum center (c_x,c_y);
 
     while (z.norm() < 4.0 && iter < max_iter) {
-        orbit.push_back(glm::dvec2(z.re.get_d(),z.im.get_d()));
-        z = z * z + center;
+        orbit.push_back(glm::dvec2(z.re.toDouble(),z.im.toDouble()));
+        if (mpower != 2.0) {
+            z = complex_power(z,mpower) + center;
+        } else {
+            z = z * z + center;
+        }
         iter++;
     }
+    max_ref_iter = iter;
 }
 
 void generate_histogram_gradients(std::vector<glm::vec4> &gradientColors) {
@@ -132,8 +160,8 @@ void generate_histogram_gradients(std::vector<glm::vec4> &gradientColors) {
     }
 }
 
-mpf_class exact_remap(mpf_class x, mpf_class a0, mpf_class a1, mpf_class b0, mpf_class b1) {
-    mpf_class res = b0 + (x - a0) * (b1 - b0) / (a1 - a0);
+mpreal exact_remap(mpreal x, mpreal a0, mpreal a1, mpreal b0, mpreal b1) {
+    mpreal res = b0 + (x - a0) * (b1 - b0) / (a1 - a0);
     return res;
 }
 
@@ -150,8 +178,8 @@ void reset_orbit_ssbo() {
 
 void reset_ssbo() {
     int size = width * height;
-    mpf_class aspect_ratio = (double)(height)/width;
-    mpf_class h = mpf_class(w * aspect_ratio);
+    mpreal aspect_ratio = (double)(height)/width;
+    mpreal h = mpreal(w * aspect_ratio);
     std::vector<MandStep> batch(size);
     #pragma omp parallel for
     for (int y = 0; y < height; y++) {
@@ -162,10 +190,10 @@ void reset_ssbo() {
             batch[i].iter = 0;
             batch[i].is_finished = 0;
             batch[i].index = 0;
-            mpf_class x_val = exact_remap(x,0,width,-w,w);
-            mpf_class y_val = exact_remap(y,0,height,-h,h);
-            batch[i].delta_x = x_val.get_d();
-            batch[i].delta_y = y_val.get_d();
+            mpreal x_val = exact_remap(x,0,width,-w,w);
+            mpreal y_val = exact_remap(y,0,height,-h,h);
+            batch[i].delta_x = x_val.toDouble();
+            batch[i].delta_y = y_val.toDouble();
         }
     }
     current_iteration = iter_round_size;
@@ -175,10 +203,10 @@ void reset_ssbo() {
 }
 
 void zoom(double mouseX, double mouseY, double zoomFactor) {
-    mpf_class aspect_ratio = (double)(height)/width;
-    mpf_class Px = exact_remap(mouseX, 0, width, c_x-w, c_x+w);
-    mpf_class z = zoomFactor;
-    mpf_class Py = exact_remap(mouseY, 0, height,c_y+w*aspect_ratio,c_y-w*aspect_ratio);
+    mpreal aspect_ratio = (double)(height)/width;
+    mpreal Px = exact_remap(mouseX, 0, width, c_x-w, c_x+w);
+    mpreal z = zoomFactor;
+    mpreal Py = exact_remap(mouseY, 0, height,c_y+w*aspect_ratio,c_y-w*aspect_ratio);
     c_x = Px + (c_x - Px) * z;
     c_y = Py + (c_y - Py) * z;
 
@@ -188,8 +216,8 @@ void zoom(double mouseX, double mouseY, double zoomFactor) {
     reset_ssbo();
     reset_orbit_ssbo(); 
 }
-void zoom_at_pos(mpf_class x, mpf_class y, double zoomFactor) {
-    mpf_class z = zoomFactor;
+void zoom_at_pos(mpreal x, mpreal y, double zoomFactor) {
+    mpreal z = zoomFactor;
     c_x = x + (c_x - x) * z;
     c_y = y + (c_y - y) * z;
 
@@ -220,6 +248,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         save_screenshot(width,height);
     } else if (key == GLFW_KEY_H && action == GLFW_PRESS) { 
         high_res_mode = true;
+    } else if (key == GLFW_KEY_LEFT_SHIFT && action == GLFW_PRESS) {
+        holding_shift = true;
+    } else if (key == GLFW_KEY_LEFT_SHIFT && action == GLFW_RELEASE) {
+        holding_shift = false;
     }
 }
 
@@ -228,8 +260,13 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
     double zoomFactor = (yoffset > 0) ? 0.5f : 2.0f;
-
-    zoom(mouseX,mouseY,zoomFactor);
+    if (!holding_shift) {
+        zoom(mouseX,mouseY,zoomFactor);
+    } else {
+        mpower += (yoffset > 0) ? 0.1 : -0.1;
+        reset_ssbo();
+        reset_orbit_ssbo(); 
+    }
 }
 
 void mouse_cursor_callback( GLFWwindow * window,  int button, int action, int mods)
@@ -261,15 +298,20 @@ void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id,
 
 int main(int argc, char** argv) {
     
-    mpf_set_default_prec(5000);
+    mpreal::set_default_prec(500);
     if (argc == 4) {
-        c_x = mpf_class(argv[1]);
-        c_y = mpf_class(argv[2]);
-        w = mpf_class(argv[3]);
-    } else {
-        c_x = mpf_class(0);
-        c_y = mpf_class(0);
-        w = mpf_class(2);
+        c_x = mpreal(argv[1]);
+        c_y = mpreal(argv[2]);
+        w = mpreal(argv[3]);
+    } else if (argc == 2) {
+        c_x = mpreal(0);
+        c_y = mpreal(0);
+        w = mpreal(2);
+        mpower = std::stod(argv[1]);
+    } else{
+        c_x = mpreal(0);
+        c_y = mpreal(0);
+        w = mpreal(2);
     }
 
     ComplexBigNum z(0, 0);
@@ -308,7 +350,9 @@ int main(int argc, char** argv) {
     GLint loc_iter = glGetUniformLocation(prog.program, "iter_round_size");
     GLint loc_grad = glGetUniformLocation(prog.program, "gradient_scale");
     GLint loc_hist = glGetUniformLocation(prog.program, "histogram_size");
+    GLint loc_pow = glGetUniformLocation(prog.program, "mpower");
     GLint loc_cen = glGetUniformLocation(prog.program, "center");
+    GLint loc_ref = glGetUniformLocation(prog.program, "max_ref_iter");
 
     glUniform2f(loc_tl,-1,1);
     glUniform2f(loc_br,1,-1);
@@ -338,8 +382,8 @@ int main(int argc, char** argv) {
     glfwSetWindowSize(window, width, height);
 
     int size = width * height;
-    mpf_class aspect_ratio = (double)(height)/width;
-    mpf_class h = w * aspect_ratio;
+    mpreal aspect_ratio = (double)(height)/width;
+    mpreal h = w * aspect_ratio;
     std::vector<MandStep> batch(size);
     std::vector<glm::vec4> gradientColors(hist_size);
     generate_histogram_gradients(gradientColors);
@@ -424,7 +468,9 @@ int main(int argc, char** argv) {
         glUniform1i(loc_iter, current_iteration);
         glUniform1i(loc_grad, gradient_scale);
         glUniform1i(loc_hist, hist_size);
-        glUniform2d(loc_cen, c_x.get_d(),c_y.get_d());
+        glUniform1d(loc_pow,mpower);
+        glUniform2d(loc_cen,c_x.toDouble(),c_y.toDouble());
+        glUniform1i(loc_ref, max_ref_iter);
         
         glBindVertexArray(VAO);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -434,6 +480,8 @@ int main(int argc, char** argv) {
         glfwPollEvents();
         current_iteration += iter_round_size;
         current_iteration = std::fmin(current_iteration, max_iter);
+
+        printf("%d\n",current_iteration);
     }
 
     glDeleteVertexArrays(1, &VAO);
