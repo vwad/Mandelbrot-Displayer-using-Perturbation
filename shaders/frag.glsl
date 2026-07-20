@@ -12,7 +12,7 @@ uniform dvec2 center;
 uniform double mpower;
 
 #define LOG_2 0.69314718055995
-#define APPR_LIMIT 1
+#define APPR_LIMIT 10
 
 struct MandStep {
     double dz_x;
@@ -90,26 +90,9 @@ dvec2 multiply_compl(double x1, double y1, double x2, double y2) {
     return dvec2(x1*x2-y1*y2,x1*y2+x2*y1);
 }
 
-double approx_atan(double x) {
-    double x2 = x * x;
-    return x * (0.9999999999999999 + x2 * (-0.3333333333333333 + x2 * 0.2000000000000000)) / 
-           (1.0 + x2 * (0.9999999999999999 + x2 * 0.4285714285714285));
-}
-
-double approx_sin(double x) {
-    double x2 = x * x;
-    return x * (1.0 + x2 * (-0.1666666666666666 + x2 * (0.0083333333333333 + x2 * -0.0001984126984126)));
-}
-
-double approx_cos(double x) {
-    double x2 = x * x;
-    return 1.0 + x2 * (-0.5 + x2 * (0.0416666666666666 + x2 * -0.0013888888888888));
-}
-
 dvec2 complex_power(double re, double im, double power) {
     double len = sqrt(re * re + im * im);
     
-    // Manual atan2 to handle all quadrants correctly
     double a;
     if (re > 0.0LF) a = atan(float(im / re));
     else if (re < 0.0LF && im >= 0.0LF) a = atan(float(im / re)) + 3.141592653589793LF;
@@ -126,6 +109,7 @@ dvec2 complex_power(double re, double im, double power) {
 dvec2 approximation_powers(double re, double im, double epsilon_re, double epsilon_im, double power) {
     dvec2 epsilon_start = dvec2(epsilon_re, epsilon_im);
     dvec2 epsilon = epsilon_start;
+    double z_mag_sq = re * re + im * im;
 
     dvec2 result = multiply_compl(complex_power(re, im, power - 1.0LF), epsilon);
     result = multiply_compl(result, power);
@@ -133,6 +117,7 @@ dvec2 approximation_powers(double re, double im, double epsilon_re, double epsil
     double scalar = power;
     double current_z_power = power - 1.0LF;
 
+    // Loop for higher order terms
     for (int i = 1; i < APPR_LIMIT; i++) {
         current_z_power -= 1.0LF; 
         
@@ -144,6 +129,7 @@ dvec2 approximation_powers(double re, double im, double epsilon_re, double epsil
         term = multiply_compl(term, complex_power(re, im, current_z_power));
         
         result = result + term;
+        
     }
 
     return result;
@@ -162,9 +148,15 @@ void perturbation(MandStep step, int id) {
         while (cd < iter_round_size) {
             // With series approximation this will break
             if (mpower != 2.0LF) {
-                dvec2 series = approximation_powers(orbit[c].x,orbit[c].y,dz_x,dz_y,mpower);
-                dz_x = series.x + delta_x;
-                dz_y = series.y + delta_y;
+                if (orbit[c].x == 0.0LF && orbit[c].y == 0.0LF) {
+                    dvec2 series = complex_power(dz_x, dz_y, mpower);
+                    dz_x = series.x + delta_x;
+                    dz_y = series.y + delta_y;
+                } else {
+                    dvec2 series = approximation_powers(orbit[c].x, orbit[c].y, dz_x, dz_y, mpower);
+                    dz_x = series.x + delta_x;
+                    dz_y = series.y + delta_y;
+                }
             } else {
                 dvec2 series = multiply_compl(multiply_compl(orbit[c],dvec2(dz_x,dz_y)),2.0LF);
                 series = series + multiply_compl(dz_x,dz_y,dz_x,dz_y);
@@ -179,7 +171,7 @@ void perturbation(MandStep step, int id) {
 
             double norm = (z_x * z_x) + (z_y * z_y);
              
-            if (norm >= 4.0LF) { 
+            if (norm >= 32.0LF) { 
                 break;
             }
             if (norm < (dz_x * dz_x) + (dz_y * dz_y) || c == max_ref_iter) {

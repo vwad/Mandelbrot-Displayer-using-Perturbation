@@ -96,7 +96,7 @@ ComplexBigNum complex_power(const ComplexBigNum& num, double power_double) {
 
     mpreal r = num.re * num.re + num.im * num.im;
 
-    mpreal theta = atan(num.im/num.re);
+    mpreal theta = atan2(num.im,num.re);
 
     mpreal rp = pow(r, p/2.0);
 
@@ -232,7 +232,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_EQUAL && action == GLFW_PRESS) {
         max_iter *= 2;
-        // reset_ssbo();
+        reset_ssbo();
         reset_orbit_ssbo();
     } else if (key == GLFW_KEY_MINUS && action == GLFW_PRESS) {
         max_iter /= 2;
@@ -269,17 +269,23 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     }
 }
 
+void move(double x, double y) {
+    mpreal aspect_ratio = (double)(height)/width;
+    mpreal Px = exact_remap(x, 0, width, c_x-w, c_x+w);
+    mpreal Py = exact_remap(y, 0, height,c_y+w*aspect_ratio,c_y-w*aspect_ratio);
+    c_x = Px;
+    c_y = Py;
+    reset_ssbo();
+    reset_orbit_ssbo(); 
+}
+
 void mouse_cursor_callback( GLFWwindow * window,  int button, int action, int mods)
 {
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if(GLFW_PRESS == action) {
-            zoom(mouseX,mouseY,0.5f);
-        }
-    } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-        if(GLFW_PRESS == action) {
-            zoom(mouseX,mouseY,2.0f);
+            move(mouseX,mouseY);
         }
     }
 }

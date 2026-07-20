@@ -61,3 +61,12 @@ It can be improved using series approximation and cut down from time rendering i
 $`\epsilon_{n}=A_n\delta+B_n\delta^2+C_n\delta^3` + ...$
 
 There are more terms that will increase accuracy but I have yet to figure out *how* do i properly skip it, I can simply double performance and skip every second iteration but this is subpar optimization, will read more about it later
+
+Implementing perturbation for multirots has been quite a problem for non-integers powers due to the binomial theorem.
+
+Using taylor series extension of binominal theorem for non-integer n for (a+b)^n. I am still doubtfull about this because while it allows to approximate.
+Perturbation for the non-integer powers is fairly terrrible due to the series becoming infinite and while it does converge there are other problems like loss of precision when computing angles for powers of complex numbers due to the builtin GLSL functions not properly supporting double precision floats. Very likely I am getting calculations messed up when I get norm of the complex number and use it for calculations or when angle is not exact.
+
+While i am using z^n=|z|^n(cos(n*Arg(z))+isin(n*Arg(z))), GLSL has no atan, pow, cos and sin for doubles, likely need my own approximation methods to be used here.
+Can use series approximation for log, sin and cos so that there is sufficient amount of decimals.
+Also, one thing to note, if I get theta of the orbit, I should be able to simply compute it by addition, though it would break rebasing method that might be implemented in the future
