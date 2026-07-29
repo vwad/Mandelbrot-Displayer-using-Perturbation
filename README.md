@@ -70,3 +70,5 @@ Perturbation for the non-integer powers is fairly terrrible due to the series be
 While i am using z^n=|z|^n(cos(n*Arg(z))+isin(n*Arg(z))), GLSL has no atan, pow, cos and sin for doubles, likely need my own approximation methods to be used here.
 Can use series approximation for log, sin and cos so that there is sufficient amount of decimals.
 Also, one thing to note, if I get theta of the orbit, I should be able to simply compute it by addition, though it would break rebasing method that might be implemented in the future
+
+Also OpenGL debugger makes me cease to exist
